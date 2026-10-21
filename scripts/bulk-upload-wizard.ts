@@ -67,6 +67,62 @@ async function confirm(question: string): Promise<boolean> {
   return answer === 'y' || answer === 'yes' || answer === 'ㅛ';
 }
 
+const ENV_FILE = '.env.local';
+const APP_URL = 'https://dart-hansol-app.vercel.app';
+
+function readEnvKeys(): Set<string> {
+  if (!fs.existsSync(ENV_FILE)) return new Set();
+  return new Set(
+    fs.readFileSync(ENV_FILE, 'utf-8').split(/\r?\n/).map((line) => line.split('=')[0].trim()).filter(Boolean)
+  );
+}
+
+/**
+ * First run on a new PC: asks for the DART key and the shared admin
+ * password, checks the password against the site, and stores both in
+ * .env.local (git-ignored). Nothing else is needed to run bulk uploads.
+ */
+async function ensureCredentials(): Promise<boolean> {
+  const present = readEnvKeys();
+  const lines: string[] = [];
+
+  if (!present.has('DART_API_KEY')) {
+    console.log('처음 실행이라 설정이 필요합니다. (이 PC에 한 번만 저장됩니다)\n');
+    while (true) {
+      const key = (await ask('DART API 키 (opendart.fss.or.kr 에서 발급, 40자리): ')).trim();
+      if (/^[0-9a-zA-Z]{40}$/.test(key)) {
+        lines.push(`DART_API_KEY=${key}`);
+        break;
+      }
+      console.log('  DART API 키는 영문·숫자 40자리입니다. 다시 확인해 주세요.');
+    }
+  }
+
+  if (!present.has('ADMIN_PASSWORD')) {
+    while (true) {
+      const password = (await ask('관리자 비밀번호: ')).trim();
+      if (!password) return false;
+      const res = await fetch(`${APP_URL}/api/admin-login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password })
+      });
+      if (res.ok) {
+        lines.push(`ADMIN_PASSWORD=${password}`);
+        break;
+      }
+      console.log('  비밀번호가 올바르지 않습니다. 다시 입력해 주세요. (그만두려면 Enter)');
+    }
+  }
+
+  if (lines.length > 0) {
+    const prefix = fs.existsSync(ENV_FILE) && !fs.readFileSync(ENV_FILE, 'utf-8').endsWith('\n') ? '\n' : '';
+    fs.appendFileSync(ENV_FILE, `${prefix}${lines.join('\n')}\n`);
+    console.log(`\n설정을 ${path.resolve(ENV_FILE)} 에 저장했습니다. 이 파일은 다른 사람과 공유하지 마세요.\n`);
+  }
+  return true;
+}
+
 function runBulkUpload(args: string[]): number {
   const result = spawnSync(
     process.execPath,
@@ -80,6 +136,11 @@ async function main() {
   console.log('==============================================');
   console.log('  DART 기업 대량 업로드');
   console.log('==============================================\n');
+
+  if (!(await ensureCredentials())) {
+    console.log('설정을 마치지 않아 종료합니다.');
+    return;
+  }
 
   const file = await askFile(process.argv[2]);
   const year = await askYear();

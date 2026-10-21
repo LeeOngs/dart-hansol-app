@@ -45,7 +45,9 @@ export async function loadCompanyKeys(year: string): Promise<Set<string>> {
  * Records one upload into a year's list: adds each result under its
  * companyKey only if that key isn't already in that year (HSETNX — existing
  * companies are never overwritten), then logs the batch with how many were
- * actually added.
+ * actually added. With `appendToId`, the results are added to that existing
+ * batch instead — used by the bulk script to save a large upload in chunks
+ * that each fit Vercel's 4.5MB request limit.
  */
 export async function saveUpload(params: {
   year: string;
@@ -53,9 +55,14 @@ export async function saveUpload(params: {
   results: CompanyAnalysisResult[];
   skippedCount: number;
   failedCount: number;
+  appendToId?: string;
 }): Promise<{ upload: UploadBatch; added: StoredCompanyResult[] }> {
   const uploads = await loadUploads();
-  const id = nextUploadId(uploads);
+  const appendTo = params.appendToId ? uploads.find((u) => u.id === params.appendToId) : undefined;
+  if (params.appendToId && (!appendTo || appendTo.year !== params.year)) {
+    throw new Error(`이어서 저장할 업로드(${params.appendToId})를 ${params.year}년 자료에서 찾을 수 없습니다.`);
+  }
+  const id = appendTo?.id ?? nextUploadId(uploads);
 
   const added: StoredCompanyResult[] = [];
   let alreadyPresent = 0;
@@ -68,6 +75,17 @@ export async function saveUpload(params: {
       if (wasSet === 1) added.push(chunk[j]);
       else alreadyPresent++;
     });
+  }
+
+  if (appendTo) {
+    const upload: UploadBatch = {
+      ...appendTo,
+      addedCount: appendTo.addedCount + added.length,
+      skippedCount: appendTo.skippedCount + params.skippedCount + alreadyPresent,
+      failedCount: appendTo.failedCount + params.failedCount
+    };
+    await redis().set(UPLOADS_KEY, uploads.map((u) => (u.id === upload.id ? upload : u)));
+    return { upload, added };
   }
 
   const upload: UploadBatch = {

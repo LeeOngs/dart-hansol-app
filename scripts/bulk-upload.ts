@@ -4,7 +4,9 @@
  * browser tab against Vercel (DART throttles cloud IPs to ~14KB/s; from a
  * local PC it doesn't).
  *
- *   npx vercel env pull .env.local          (once — DART key + Redis access)
+ * Needs only DART_API_KEY and the shared ADMIN_PASSWORD in .env.local
+ * (대량업로드.bat asks for them on first run); saving goes through the site's API.
+ *
  *   npx tsx --env-file=.env.local scripts/bulk-upload.ts <file.xlsx|csv|json> --year 2026 [--label "이름"] [--concurrency 3]
  *   npx tsx --env-file=.env.local scripts/bulk-upload.ts <file> --dry-run --limit 20   (speed test, saves nothing)
  *
@@ -30,7 +32,61 @@ import {
   DartApiError,
   DART_DAILY_LIMIT_STATUS
 } from '../api/_lib/dartLookup.js';
-import { loadCompanyKeys, saveUpload } from '../api/_lib/companyStore.js';
+import type { StoredCompanyResult, UploadBatch } from '../src/types.js';
+
+// Reads and saves through the site's API with the shared admin password, so
+// an admin needs only that password and a DART key — never the store's
+// credentials.
+const APP_URL = (process.env.APP_URL || 'https://dart-hansol-app.vercel.app').replace(/\/$/, '');
+const SAVE_CHUNK_SIZE = 500; // keeps each save request well under Vercel's 4.5MB body limit
+
+async function postApi<T>(pathname: string, body: unknown): Promise<T> {
+  const res = await fetch(`${APP_URL}${pathname}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  const data = await res.json().catch(() => ({})) as { error?: string };
+  if (!res.ok) throw new Error(data.error || `${pathname} 요청 실패 (${res.status})`);
+  return data as T;
+}
+
+async function loadExistingKeys(year: string): Promise<Set<string>> {
+  const keys = new Set<string>();
+  let cursor = '0';
+  do {
+    const res = await fetch(`${APP_URL}/api/companies?year=${year}&cursor=${cursor}`);
+    if (!res.ok) throw new Error(`기존 기업 목록을 불러오지 못했습니다 (${res.status})`);
+    const page = await res.json() as { companies: StoredCompanyResult[]; cursor: string };
+    for (const c of page.companies) keys.add(companyKey(c.company));
+    cursor = page.cursor;
+  } while (cursor !== '0');
+  return keys;
+}
+
+async function saveViaApi(params: {
+  adminPassword: string;
+  year: string;
+  label?: string;
+  results: CompanyAnalysisResult[];
+  skippedCount: number;
+  failedCount: number;
+}): Promise<UploadBatch> {
+  let upload: UploadBatch | undefined;
+  for (let i = 0; i < params.results.length || i === 0; i += SAVE_CHUNK_SIZE) {
+    const first = upload === undefined;
+    ({ upload } = await postApi<{ upload: UploadBatch }>('/api/upload-finalize', {
+      adminPassword: params.adminPassword,
+      year: params.year,
+      label: params.label,
+      results: params.results.slice(i, i + SAVE_CHUNK_SIZE),
+      skippedCount: first ? params.skippedCount : 0,
+      failedCount: first ? params.failedCount : 0,
+      appendToId: upload?.id
+    }));
+  }
+  return upload!;
+}
 
 const ATTEMPTS_PER_COMPANY = 3;
 const CHECKPOINT_EVERY = 20;
@@ -94,7 +150,16 @@ function formatDuration(ms: number): string {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const apiKey = process.env.DART_API_KEY;
-  if (!apiKey) throw new Error('DART_API_KEY가 없습니다. 먼저 `npx vercel env pull .env.local`을 실행하세요.');
+  const adminPassword = process.env.ADMIN_PASSWORD;
+  if (!apiKey || !adminPassword) {
+    throw new Error('.env.local에 DART_API_KEY와 ADMIN_PASSWORD가 필요합니다. 대량업로드.bat을 실행하면 처음 한 번 입력받아 저장합니다.');
+  }
+  // Fail now rather than after a long run.
+  if (!args.dryRun) {
+    await postApi('/api/admin-login', { password: adminPassword }).catch(() => {
+      throw new Error('관리자 비밀번호가 올바르지 않습니다. .env.local의 ADMIN_PASSWORD를 확인하세요.');
+    });
+  }
 
   // Count DART calls (to compare against the daily cap) and space them out
   // across all workers.
@@ -113,7 +178,7 @@ async function main() {
   };
 
   const unique = dedupeCompanies(readCompanies(args.file));
-  const existingKeys = args.dryRun ? new Set<string>() : await loadCompanyKeys(args.year);
+  const existingKeys = args.dryRun ? new Set<string>() : await loadExistingKeys(args.year);
 
   const checkpointPath = path.join('.bulk-progress', `${args.year}-${path.basename(args.file)}.json`);
   const done: Record<string, CompanyAnalysisResult> =
@@ -208,7 +273,8 @@ async function main() {
     return;
   }
 
-  const { upload } = await saveUpload({
+  const upload = await saveViaApi({
+    adminPassword,
     year: args.year,
     label: args.label,
     results,

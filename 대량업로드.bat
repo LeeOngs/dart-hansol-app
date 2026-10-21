@@ -13,15 +13,6 @@ if errorlevel 1 (
   exit /b 1
 )
 
-if not exist ".env.local" (
-  echo [ERROR] .env.local not found. Run these once in this folder:
-  echo   npx vercel login
-  echo   npx vercel link
-  echo   npx vercel env pull .env.local
-  pause
-  exit /b 1
-)
-
 if not exist "node_modules" (
   echo Installing packages for the first run...
   call npm install
