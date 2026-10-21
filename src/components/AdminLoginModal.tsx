@@ -71,7 +71,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({ isOpen, onClos
               <span>안내사항</span>
             </div>
             <p className="leading-relaxed">
-              관리자 비밀번호를 입력하면 Raw Data 업로드, 직접 입력, 샘플 데이터 로딩이 가능해집니다. 업로드한 내용은 모든 방문자에게 공유됩니다.
+              관리자 비밀번호를 입력하면 Raw Data 업로드와 직접 입력이 가능해집니다. 업로드한 내용은 모든 방문자에게 공유됩니다.
             </p>
           </div>
 

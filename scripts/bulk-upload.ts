@@ -35,6 +35,23 @@ import { loadCompanyKeys, saveUpload } from '../api/_lib/companyStore.js';
 const ATTEMPTS_PER_COMPANY = 3;
 const CHECKPOINT_EVERY = 20;
 
+// DART temporarily blocks an IP (connections reset) when it sends requests
+// too fast — confirmed on the first real 571-company run. Spacing requests
+// out avoids that; ~3 requests per company keeps 3,000 companies ~30 minutes.
+const MIN_MS_BETWEEN_DART_REQUESTS = 200;
+// Once this many lookups in a row fail at the network level, DART is
+// assumed to be blocking us: stop (progress is kept) instead of recording
+// every remaining company as failed.
+const BLOCKED_AFTER_CONSECUTIVE_NETWORK_ERRORS = 8;
+const NETWORK_RETRY_WAIT_MS = 15000;
+const BLOCKED_EXIT_CODE = 3; // bulk-upload-wizard.ts reads this
+
+function isNetworkError(err: unknown): boolean {
+  return err instanceof TypeError && err.message === 'fetch failed';
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 function parseArgs(argv: string[]) {
   const args = { file: '', year: '', label: undefined as string | undefined, dryRun: false, limit: Infinity, concurrency: 3 };
   for (let i = 0; i < argv.length; i++) {
@@ -79,11 +96,19 @@ async function main() {
   const apiKey = process.env.DART_API_KEY;
   if (!apiKey) throw new Error('DART_API_KEY가 없습니다. 먼저 `npx vercel env pull .env.local`을 실행하세요.');
 
-  // Count DART calls so the run can be compared against the daily cap.
+  // Count DART calls (to compare against the daily cap) and space them out
+  // across all workers.
   let dartRequests = 0;
+  let nextDartSlot = 0;
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = (input, init) => {
-    if (String(input instanceof Request ? input.url : input).includes('opendart.fss.or.kr')) dartRequests++;
+  globalThis.fetch = async (input, init) => {
+    if (String(input instanceof Request ? input.url : input).includes('opendart.fss.or.kr')) {
+      dartRequests++;
+      const now = Date.now();
+      const slot = Math.max(now, nextDartSlot);
+      nextDartSlot = slot + MIN_MS_BETWEEN_DART_REQUESTS;
+      if (slot > now) await sleep(slot - now);
+    }
     return originalFetch(input, init);
   };
 
@@ -113,14 +138,18 @@ async function main() {
 
   const failed: { company: CompanyRawData; error: string }[] = [];
   let hitDailyLimit = false;
+  let blocked = false;
+  let consecutiveNetworkErrors = 0;
   let completed = 0;
   const startedAt = Date.now();
+  const stopped = () => hitDailyLimit || blocked;
 
   await runPool(todo, args.concurrency, async (company) => {
     let lastError: unknown;
-    for (let attempt = 0; attempt < ATTEMPTS_PER_COMPANY && !hitDailyLimit; attempt++) {
+    for (let attempt = 0; attempt < ATTEMPTS_PER_COMPANY && !stopped(); attempt++) {
       try {
         const result = await analyzeCompany(company, backend);
+        consecutiveNetworkErrors = 0;
         done[companyKey(company)] = result;
         completed++;
         const elapsed = Date.now() - startedAt;
@@ -134,13 +163,21 @@ async function main() {
           hitDailyLimit = true;
           return;
         }
+        if (isNetworkError(err)) {
+          if (++consecutiveNetworkErrors >= BLOCKED_AFTER_CONSECUTIVE_NETWORK_ERRORS) {
+            blocked = true;
+            return;
+          }
+          console.log(`[연결 오류] ${company.name} — ${NETWORK_RETRY_WAIT_MS / 1000}초 후 재시도`);
+          await sleep(NETWORK_RETRY_WAIT_MS);
+        }
       }
     }
-    if (!hitDailyLimit) {
+    if (!stopped()) {
       failed.push({ company, error: (lastError as Error)?.message ?? String(lastError) });
       console.log(`[실패] ${company.name}: ${(lastError as Error)?.message}`);
     }
-  }, () => hitDailyLimit);
+  }, stopped);
 
   saveCheckpoint();
   const results = Object.values(done);
@@ -155,6 +192,11 @@ async function main() {
   if (hitDailyLimit) {
     console.log(`\nDART 일일 요청 한도(2만 건)에 도달했습니다. 진행 상황은 ${checkpointPath}에 저장됐습니다 — 내일 같은 명령을 다시 실행하면 이어서 진행합니다.`);
     process.exitCode = 2;
+    return;
+  }
+  if (blocked) {
+    console.log(`\nDART 서버가 연결을 계속 끊고 있습니다(요청이 많아 일시 차단된 것으로 보입니다). 진행 상황은 ${checkpointPath}에 저장됐습니다 — 1~2시간 뒤 같은 명령을 다시 실행하면 이어서 진행합니다.`);
+    process.exitCode = BLOCKED_EXIT_CODE;
     return;
   }
   if (args.dryRun) {

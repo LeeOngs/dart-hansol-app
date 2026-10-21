@@ -12,6 +12,7 @@ import { isValidDatasetYear, currentYear } from '../src/services/companyStore.js
 
 const DRY_RUN_SAMPLE = 20;
 const DAILY_LIMIT_EXIT_CODE = 2; // see bulk-upload.ts
+const BLOCKED_EXIT_CODE = 3; // see bulk-upload.ts
 
 // Lines are queued rather than read with rl.question(): answers typed or
 // pasted ahead of the next prompt would otherwise be silently dropped.
@@ -106,6 +107,8 @@ async function main() {
     console.log(`\n완료! 사이트에서 ${year}년 탭을 열어 확인하세요: https://dart-hansol-app.vercel.app`);
   } else if (code === DAILY_LIMIT_EXIT_CODE) {
     console.log('\n오늘 DART 요청 한도에 도달했습니다. 진행 상황은 저장됐으니 내일 같은 파일과 연도로 다시 실행하면 이어서 진행합니다.');
+  } else if (code === BLOCKED_EXIT_CODE) {
+    console.log('\nDART가 일시적으로 접속을 막았습니다. 진행 상황은 저장됐으니 1~2시간 뒤 같은 파일과 연도로 다시 실행하면 이어서 진행합니다.');
   } else {
     console.log('\n오류로 중단됐습니다. 진행 상황은 저장됐으니 같은 파일과 연도로 다시 실행하면 이어서 진행합니다.');
   }
