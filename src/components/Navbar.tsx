@@ -1,23 +1,19 @@
 import React from 'react';
-import { Key, RefreshCw, CheckCircle2, ShieldCheck } from 'lucide-react';
+import { ShieldCheck, CheckCircle2 } from 'lucide-react';
 
 interface NavbarProps {
-  apiKey: string;
-  onOpenApiKeyModal: () => void;
-  onReloadSamples: () => void;
+  isAdmin: boolean;
+  onOpenAdminModal: () => void;
   passedCount: number;
   totalCount: number;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
-  apiKey,
-  onOpenApiKeyModal,
-  onReloadSamples,
+  isAdmin,
+  onOpenAdminModal,
   passedCount,
   totalCount
 }) => {
-  const hasKey = apiKey.trim().length > 0;
-
   return (
     <header className="sticky top-0 z-40 bg-slate-900/90 backdrop-blur-md border-b border-slate-800 text-slate-100 px-4 lg:px-8 py-3.5 shadow-xl">
       <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -53,24 +49,15 @@ export const Navbar: React.FC<NavbarProps> = ({
           )}
 
           <button
-            onClick={onOpenApiKeyModal}
+            onClick={onOpenAdminModal}
             className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-all flex items-center gap-1.5 ${
-              hasKey
+              isAdmin
                 ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/40 hover:bg-emerald-500/20'
                 : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700 hover:text-white'
             }`}
           >
-            <Key className="w-3.5 h-3.5" />
-            <span>{hasKey ? 'DART API 인증됨' : 'DART API Key 설정'}</span>
-          </button>
-
-          <button
-            onClick={onReloadSamples}
-            className="px-3 py-1.5 text-xs font-medium bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-lg shadow-md shadow-blue-500/15 transition-all flex items-center gap-1.5"
-            title="실제 주요 기업 15개사 샘플 데이터 불러오기"
-          >
-            <RefreshCw className="w-3.5 h-3.5" />
-            <span>샘플 데이터 로딩</span>
+            <ShieldCheck className="w-3.5 h-3.5" />
+            <span>{isAdmin ? '관리자 모드 ON' : '관리자 모드'}</span>
           </button>
         </div>
       </div>

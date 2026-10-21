@@ -21,7 +21,7 @@ export const DataTable: React.FC<DataTableProps> = ({
         <Building className="w-12 h-12 text-slate-600 mx-auto mb-3" />
         <h3 className="text-base font-bold text-slate-200">조건에 일치하는 기업 데이터가 없습니다</h3>
         <p className="text-xs text-slate-500 mt-1">
-          상단에서 엑셀 파일 업로드 또는 샘플 데이터 로딩 버튼을 눌러주세요.
+          다른 연도 탭을 선택하거나 필터 조건을 바꿔 보세요.
         </p>
       </div>
     );

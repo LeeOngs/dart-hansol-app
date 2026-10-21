@@ -1,5 +1,5 @@
-import type { HansolHub, HubDistance } from '../types';
-import { HANSOL_HUBS } from '../constants/hansolHubs';
+import type { HansolHub, HubDistance } from '../types.js';
+import { HANSOL_HUBS } from '../constants/hansolHubs.js';
 
 /**
  * Calculates geodesic distance between two latitude/longitude points in kilometers using Haversine formula.

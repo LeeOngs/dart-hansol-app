@@ -18,8 +18,7 @@ export const CompanyDetailModal: React.FC<CompanyDetailModalProps> = ({ item, on
   const dartStatusLabel =
     item.dartSource === 'LIVE_DART' ? `DART 채무증권 신고서 확인 (${item.ratingSource?.agency ?? ''})` :
     item.dartSource === 'NOT_ON_DART' ? 'DART 미등록 (사업자번호 불일치)' :
-    item.dartSource === 'ON_DART_NO_RATING' ? 'DART 등록됨 · 채무증권 신고서에서 등급 미확인' :
-    'DART 재무제표 기반 분석';
+    'DART 등록됨 · 채무증권 신고서에서 등급 미확인';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fade-in">

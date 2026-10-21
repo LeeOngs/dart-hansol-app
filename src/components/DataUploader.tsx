@@ -6,15 +6,15 @@ import type { CompanyRawData } from '../types';
 interface DataUploaderProps {
   onDataLoaded: (companies: CompanyRawData[], uploadLabel?: string) => void;
   onAddManualCompany: (company: CompanyRawData) => void;
-  onLoadSamples: () => void;
   currentCount: number;
+  targetYear: string;
 }
 
 export const DataUploader: React.FC<DataUploaderProps> = ({
   onDataLoaded,
   onAddManualCompany,
-  onLoadSamples,
-  currentCount
+  currentCount,
+  targetYear
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -95,6 +95,9 @@ export const DataUploader: React.FC<DataUploaderProps> = ({
           <p className="text-xs text-slate-400 mt-1">
             분석 대상 기업 리스트가 포함된 엑셀(.xlsx, .xls), CSV, JSON 파일을 업로드하세요.
           </p>
+          <p className="text-xs text-blue-300 mt-1">
+            <strong>{targetYear}년 자료</strong>에 추가됩니다. 이 연도에 이미 있는 기업은 건너뜁니다. 다른 연도는 위 연도 탭에서 선택하세요.
+          </p>
         </div>
 
         <div className="flex items-center gap-2">
@@ -171,17 +174,6 @@ export const DataUploader: React.FC<DataUploaderProps> = ({
             <span className="px-2.5 py-1 bg-slate-900 border border-slate-800 rounded-md">
               현재 등록 기업: <strong className="text-blue-400">{currentCount}개사</strong>
             </span>
-            <span>또는</span>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onLoadSamples();
-              }}
-              className="text-blue-400 hover:text-blue-300 font-semibold underline flex items-center gap-1"
-            >
-              <Sparkles className="w-3.5 h-3.5" /> 15개 추천 기업 샘플 즉시 로드
-            </button>
           </div>
         </div>
       </div>

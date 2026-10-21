@@ -1,4 +1,4 @@
-import type { CreditRating, RatingStatus } from '../types';
+import type { CreditRating, RatingStatus } from '../types.js';
 
 export const CREDIT_RATINGS_ORDER: CreditRating[] = [
   'AAA',

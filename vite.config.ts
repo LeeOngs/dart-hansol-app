@@ -11,15 +11,6 @@ export default defineConfig({
   // directly via file:// (double-click) without hitting the browser's
   // CORS block on loading separate <script type="module"> files from disk.
   plugins: [react(), tailwindcss(), viteSingleFile()],
-  server: {
-    proxy: {
-      '/api/dart': {
-        target: 'https://opendart.fss.or.kr',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/dart/, '/api'),
-      },
-    },
-  },
   test: {
     environment: 'jsdom',
   },

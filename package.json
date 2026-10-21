@@ -6,12 +6,15 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "typecheck:api": "tsc -p tsconfig.api.json --noEmit",
     "lint": "oxlint",
     "preview": "vite preview",
     "test": "vitest run"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",
+    "@upstash/redis": "^1.39.0",
+    "@vercel/node": "^25.0.0",
     "fflate": "^0.8.3",
     "lucide-react": "^1.46.0",
     "react": "^19.2.8",
@@ -26,6 +29,7 @@
     "@vitejs/plugin-react": "^6.1.1",
     "jsdom": "^29.1.1",
     "oxlint": "^1.81.0",
+    "tsx": "^4.23.15",
     "typescript": "~6.0.2",
     "vite": "^8.3.0",
     "vite-plugin-singlefile": "^2.3.3",

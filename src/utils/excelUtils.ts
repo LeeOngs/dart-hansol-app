@@ -23,7 +23,8 @@ export async function parseCompanyFile(file: File): Promise<CompanyRawData[]> {
   return normalizeRawDataList(jsonRows);
 }
 
-function normalizeRawDataList(rows: Record<string, any>[]): CompanyRawData[] {
+// Exported for scripts/bulk-upload.ts, which reads the sheet itself in Node.
+export function normalizeRawDataList(rows: Record<string, any>[]): CompanyRawData[] {
   return rows.map((row, index) => {
     const nameKey = findHeaderKey(row, ['회사명', '기업명', '상호명', '업체명', 'company', 'name']);
     const addressKey = findHeaderKey(row, ['주소', '소재지', '본사주소', '공장주소', 'address', 'location']);
@@ -77,8 +78,7 @@ export function exportResultsToExcel(results: CompanyAnalysisResult[], filename:
     '공시출처':
       r.dartSource === 'LIVE_DART' ? 'DART 채무증권 신고서 확인' :
       r.dartSource === 'NOT_ON_DART' ? 'DART 미등록' :
-      r.dartSource === 'ON_DART_NO_RATING' ? 'DART 등록 · 등급 미확인' :
-      'DART 분석 추정'
+      'DART 등록 · 등급 미확인'
   }));
 
   const worksheet = XLSX.utils.json_to_sheet(exportData);

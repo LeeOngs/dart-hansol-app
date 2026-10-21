@@ -1,4 +1,4 @@
-import type { HansolHub } from '../types';
+import type { HansolHub } from '../types.js';
 
 export const HANSOL_HUBS: HansolHub[] = [
   {
