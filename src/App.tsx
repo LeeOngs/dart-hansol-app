@@ -45,7 +45,10 @@ export function App() {
   const isAdmin = adminPassword.length > 0;
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
 
-  const [uploads, setUploads] = useState<UploadBatch[]>([]);
+  // Dataset years that have data — public. The upload log itself is admin-only.
+  const [savedYears, setSavedYears] = useState<string[]>([]);
+  const [adminUploads, setUploads] = useState<UploadBatch[]>([]);
+  const uploads = useMemo(() => (isAdmin ? adminUploads : []), [isAdmin, adminUploads]);
   // Each dataset year is its own cumulative list; only the selected one is loaded.
   const [selectedYear, setSelectedYear] = useState<string | null>(null);
   // Years the admin opened in this session that have no upload yet.
@@ -73,25 +76,25 @@ export function App() {
   const [selectedCompany, setSelectedCompany] = useState<CompanyAnalysisResult | null>(null);
 
   const years = useMemo(() => {
-    const all = [...new Set([...yearsFromUploads(uploads), ...newYears])].sort((a, b) => b.localeCompare(a));
+    const all = [...new Set([...savedYears, ...yearsFromUploads(uploads), ...newYears])].sort((a, b) => b.localeCompare(a));
     return all.length > 0 ? all : [currentYear()];
-  }, [uploads, newYears]);
+  }, [savedYears, uploads, newYears]);
 
   // The shared lists live on the server — every viewer loads the same data.
-  // The upload log comes first; it decides which year opens by default (the latest).
+  // The year list comes first; it decides which year opens by default (the latest).
   useEffect(() => {
     let cancelled = false;
 
     (async () => {
       try {
-        const data = await fetchJson<{ uploads: UploadBatch[] }>('/api/uploads');
+        const data = await fetchJson<{ years: string[] }>('/api/uploads');
         if (cancelled) return;
-        const loaded = Array.isArray(data.uploads) ? data.uploads : [];
-        setUploads(loaded);
-        setSelectedYear(yearsFromUploads(loaded)[0] ?? currentYear());
+        const loaded = Array.isArray(data.years) ? data.years : [];
+        setSavedYears(loaded);
+        setSelectedYear(loaded[0] ?? currentYear());
       } catch {
         if (!cancelled) {
-          setHistoryError('업로드 이력을 불러오지 못했습니다. 새로고침해 주세요.');
+          setHistoryError('자료 연도 목록을 불러오지 못했습니다. 새로고침해 주세요.');
           setIsLoadingHistory(false);
         }
       }
@@ -101,6 +104,35 @@ export function App() {
       cancelled = true;
     };
   }, []);
+
+  // The upload log is only fetched (and only served) for the admin.
+  useEffect(() => {
+    if (!adminPassword) return;
+    let cancelled = false;
+
+    (async () => {
+      const res = await fetch('/api/uploads', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ adminPassword })
+      });
+      if (cancelled) return;
+      if (res.status === 401) {
+        // Stored password no longer valid — drop admin mode.
+        setAdminPassword('');
+        localStorage.removeItem(ADMIN_PASSWORD_STORAGE_KEY);
+        return;
+      }
+      const data = await res.json().catch(() => ({}));
+      if (!cancelled && res.ok) setUploads(Array.isArray(data.uploads) ? data.uploads : []);
+    })().catch(() => {
+      if (!cancelled) setUploadError('업로드 이력을 불러오지 못했습니다. 새로고침해 주세요.');
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [adminPassword]);
 
   useEffect(() => {
     if (!selectedYear) return;
@@ -139,9 +171,11 @@ export function App() {
     setSelectedYear(year);
   };
 
+  // Filtering by upload batch is an admin view; visitors always see the whole year.
+  const effectiveUploadId = isAdmin ? activeUploadId : null;
   const analysisResults = useMemo(
-    () => allCompanies.filter((r) => !hiddenIds.has(r.id) && (activeUploadId === null || r.uploadId === activeUploadId)),
-    [allCompanies, hiddenIds, activeUploadId]
+    () => allCompanies.filter((r) => !hiddenIds.has(r.id) && (effectiveUploadId === null || r.uploadId === effectiveUploadId)),
+    [allCompanies, hiddenIds, effectiveUploadId]
   );
 
   // Shared submit path for file upload / manual add / sample load. Companies
@@ -333,12 +367,14 @@ export function App() {
           />
         )}
 
-        <UploadHistoryPanel
-          uploads={uploads.filter((u) => u.year === selectedYear)}
-          totalCount={allCompanies.length}
-          activeUploadId={activeUploadId}
-          onSelect={setActiveUploadId}
-        />
+        {isAdmin && (
+          <UploadHistoryPanel
+            uploads={uploads.filter((u) => u.year === selectedYear)}
+            totalCount={allCompanies.length}
+            activeUploadId={activeUploadId}
+            onSelect={setActiveUploadId}
+          />
+        )}
 
         {isLoadingHistory && (
           <div className="p-4 mb-6 bg-blue-500/10 border border-blue-500/30 rounded-2xl flex items-center justify-center gap-3 text-blue-400 text-sm animate-pulse">
