@@ -6,7 +6,7 @@ import { CheckCircle2, XCircle, MapPin, Trash2, Info, Building, Truck, Clock, Sh
 interface DataTableProps {
   results: CompanyAnalysisResult[];
   onSelectCompany: (item: CompanyAnalysisResult) => void;
-  onRemoveCompany: (id: string) => void;
+  onRemoveCompany?: (item: CompanyAnalysisResult) => void; // admin only; no button when absent
   minRatingLabel?: string;
 }
 
@@ -165,13 +165,15 @@ export const DataTable: React.FC<DataTableProps> = ({
                       >
                         <Info className="w-4 h-4" />
                       </button>
-                      <button
-                        onClick={() => onRemoveCompany(item.id)}
-                        className="p-1.5 text-slate-500 hover:text-rose-400 hover:bg-slate-800 rounded-lg transition-colors"
-                        title="기업 삭제"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      {onRemoveCompany && (
+                        <button
+                          onClick={() => onRemoveCompany(item)}
+                          className="p-1.5 text-slate-500 hover:text-rose-400 hover:bg-slate-800 rounded-lg transition-colors"
+                          title="공유 목록에서 기업 삭제 (관리자)"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>

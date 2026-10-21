@@ -59,7 +59,6 @@ export function App() {
 
   // null = the whole cumulative list; otherwise only what that upload added.
   const [activeUploadId, setActiveUploadId] = useState<string | null>(null);
-  const [hiddenIds, setHiddenIds] = useState<Set<string>>(() => new Set());
 
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<AnalysisProgress | null>(null);
@@ -143,7 +142,6 @@ export function App() {
       setHistoryError(null);
       setAllCompanies([]);
       setActiveUploadId(null);
-      setHiddenIds(new Set());
       try {
         const companies = await fetchYearCompanies(selectedYear);
         if (!cancelled) setAllCompanies(companies);
@@ -174,8 +172,8 @@ export function App() {
   // Filtering by upload batch is an admin view; visitors always see the whole year.
   const effectiveUploadId = isAdmin ? activeUploadId : null;
   const analysisResults = useMemo(
-    () => allCompanies.filter((r) => !hiddenIds.has(r.id) && (effectiveUploadId === null || r.uploadId === effectiveUploadId)),
-    [allCompanies, hiddenIds, effectiveUploadId]
+    () => allCompanies.filter((r) => effectiveUploadId === null || r.uploadId === effectiveUploadId),
+    [allCompanies, effectiveUploadId]
   );
 
   // Shared submit path for file upload / manual add / sample load. Companies
@@ -254,16 +252,42 @@ export function App() {
   const handleDataLoaded = (companies: CompanyRawData[], uploadLabel?: string) => submitUpload(companies, uploadLabel);
   const handleAddManualCompany = (company: CompanyRawData) => submitUpload([company]);
 
-  // Removing a row only hides it from the current view — it does not touch
-  // the shared list, since other viewers rely on that staying intact.
-  const handleRemoveCompany = (id: string) => {
-    setHiddenIds((prev) => new Set(prev).add(id));
+  // Admin only: permanently removes the company from this year's shared list.
+  const handleRemoveCompany = async (item: CompanyAnalysisResult) => {
+    if (!selectedYear || isUploading) return;
+    const year = selectedYear;
+    if (!confirm(`"${item.company.name}"을(를) ${year}년 자료에서 삭제할까요?\n모든 방문자의 화면에서 사라지며 되돌릴 수 없습니다.`)) return;
+
+    setUploadError(null);
+    setUploadNotice(null);
+    try {
+      const res = await fetch('/api/delete-company', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ adminPassword, year, key: companyKey(item.company) })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 401) {
+        handleLogout();
+        throw new Error('관리자 비밀번호가 변경되었습니다. 다시 로그인해 주세요.');
+      }
+      if (!res.ok) throw new Error(data.error || '삭제에 실패했습니다.');
+      setAllCompanies((prev) => prev.filter((r) => r.id !== item.id));
+      setUploadNotice(`"${item.company.name}"을(를) ${year}년 자료에서 삭제했습니다.`);
+    } catch (err) {
+      setUploadError((err as Error).message);
+    }
   };
 
   const handleAdminLoginSuccess = (password: string) => {
     setAdminPassword(password);
     localStorage.setItem(ADMIN_PASSWORD_STORAGE_KEY, password);
   };
+
+  function handleLogout() {
+    setAdminPassword('');
+    localStorage.removeItem(ADMIN_PASSWORD_STORAGE_KEY);
+  }
 
   const filteredAndSortedResults = useMemo(() => {
     return analysisResults
@@ -455,7 +479,7 @@ export function App() {
         <DataTable
           results={filteredAndSortedResults}
           onSelectCompany={(item) => setSelectedCompany(item)}
-          onRemoveCompany={handleRemoveCompany}
+          onRemoveCompany={isAdmin ? handleRemoveCompany : undefined}
         />
       </main>
 
@@ -474,6 +498,8 @@ export function App() {
         isOpen={isAdminModalOpen}
         onClose={() => setIsAdminModalOpen(false)}
         onLoginSuccess={handleAdminLoginSuccess}
+        adminPassword={isAdmin ? adminPassword : null}
+        onLogout={handleLogout}
       />
 
       <CompanyDetailModal

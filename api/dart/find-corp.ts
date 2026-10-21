@@ -13,7 +13,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const { adminPassword, name, bizNo } = req.body ?? {};
-  if (!isValidAdminPassword(adminPassword)) {
+  if (!(await isValidAdminPassword(adminPassword))) {
     res.status(401).json({ error: '관리자 인증에 실패했습니다.' });
     return;
   }

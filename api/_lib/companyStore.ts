@@ -1,14 +1,6 @@
-import { Redis } from '@upstash/redis';
 import type { CompanyAnalysisResult, StoredCompanyResult, UploadBatch } from '../../src/types.js';
 import { companyKey, defaultUploadLabel, nextUploadId, toStored } from '../../src/services/companyStore.js';
-
-// Lazy so importing this module (e.g. from the bulk script before env vars
-// are checked) doesn't throw.
-let client: Redis | null = null;
-function redis(): Redis {
-  client ??= Redis.fromEnv();
-  return client;
-}
+import { redis } from './redis.js';
 
 // One cumulative company list per dataset year: hash of companyKey →
 // StoredCompanyResult under "dart_companies:<year>".
@@ -39,6 +31,11 @@ export async function loadCompaniesPage(year: string, cursor: string): Promise<{
 
 export async function loadCompanyKeys(year: string): Promise<Set<string>> {
   return new Set(await redis().hkeys(companiesKey(year)));
+}
+
+/** Removes one company from a year's list. Returns false if it wasn't there. */
+export async function deleteCompany(year: string, key: string): Promise<boolean> {
+  return (await redis().hdel(companiesKey(year), key)) === 1;
 }
 
 /**
