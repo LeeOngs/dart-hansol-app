@@ -83,6 +83,7 @@ const corpCodeIndex = corpCodeIndexData as CorpCodeEntry[];
 // problems, the 20,000-requests/day cap (020), maintenance (800) — is a
 // failure of the lookup itself and must never be read as "not on DART".
 export const DART_DAILY_LIMIT_STATUS = '020';
+const NO_DOCUMENT_STATUS = '014';
 
 export class DartApiError extends Error {
   readonly status: string;
@@ -256,6 +257,10 @@ export async function checkFilingForRating(rceptNo: string, apiKey: string): Pro
   } catch {
     const body = new TextDecoder('utf-8').decode(buffer);
     const status = /<status>(\d+)<\/status>/.exec(body)?.[1] ?? 'unknown';
+    // 014 = no document for this filing — e.g. "[첨부정정]" filings, which
+    // only amend attachments. It says nothing about the rating, so the
+    // caller just moves on to the next filing.
+    if (status === NO_DOCUMENT_STATUS) return null;
     const message = /<message>([^<]*)<\/message>/.exec(body)?.[1] ?? body.slice(0, 200);
     throw new DartApiError(status, message);
   }
