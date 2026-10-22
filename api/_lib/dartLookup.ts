@@ -332,10 +332,14 @@ const SHORT_TERM_PATTERN = /기업어음|단기사채|전자단기|CP|ABSTB/;
 // Only Korean agencies' ratings count: the same table often lists global
 // ratings (S&P/Moody's/Fitch), which are on a different, stricter scale.
 const DOMESTIC_AGENCY_NAMES = ['한국신용평가', 'NICE신용평가', '나이스신용평가', '한국기업평가', '서울신용평가', '한신평', '한기평'];
-// A business report also describes each consolidated subsidiary ("□ 자회사명")
-// after the company's own overview; stop before those so a subsidiary's
+// A business report also describes consolidated subsidiaries — as separate
+// sections ("□ 자회사명") or as a table right after the company's own
+// ("종속회사인 ○○㈜의 … 신용평가 내역"). Stop before those so a subsidiary's
 // rating is never read as the company's.
-const SUBSIDIARY_SECTION_MARKERS = ['□', '회사의 연혁'];
+const SUBSIDIARY_SECTION_MARKERS = ['□', '종속회사', '회사의 연혁'];
+// Short-term grades (A1, A2+, A3-) — these rows must not inherit a
+// long-term rating from the row above.
+const SHORT_TERM_GRADE_PATTERN = /(?<![A-Za-z0-9])A[123][+-]?(?![0-9])/;
 const EVALUATION_TYPE_PATTERN = /본평가|정기평가|수시평가|예비평가/;
 // Scale notes like "(AAA ~ D, 10등급)" contain rating-looking tokens.
 const SCALE_NOTE_PATTERN = /\(\s*(?:AAA|A1)\s*~\s*D[^)]*\)/g;
@@ -367,6 +371,11 @@ export function extractRatingFromAnnualReport(rawText: string): AnnualReportRati
     if (start > ownSectionEnd) break;
     const dates = [...text.slice(start, ownSectionEnd).matchAll(DATE_PATTERN)];
     let previousEnd = 0;
+    // Tables often merge the rating cell across rows (one rating, several
+    // agencies/dates); such a row has no rating of its own and takes the
+    // one above it.
+    let ratingAbove: CreditRating | null = null;
+    let typeAbove = '';
     for (let i = 0; i < dates.length; i++) {
       const date = dates[i];
       const dateStart = date.index ?? 0;
@@ -376,19 +385,40 @@ export function extractRatingFromAnnualReport(rawText: string): AnnualReportRati
       const row = text.slice(start + dateStart + date[0].length, start + rowEnd);
       previousEnd = rowEnd;
 
-      const ratingMatch = RATING_TOKEN_PATTERN.exec(row);
-      if (!ratingMatch) continue;
-      if (SHORT_TERM_PATTERN.test(row.slice(0, ratingMatch.index))) continue;
-      const compactRow = row.replace(/\s+/g, '');
-      const agency = DOMESTIC_AGENCY_NAMES.find((a) => compactRow.includes(a));
-      if (!agency) continue;
+      // The agency column follows the rating column, so the rating is read
+      // only from the text before the agency name — never from whatever
+      // comes after the table (e.g. the rating-scale explanation).
+      const agencyHit = DOMESTIC_AGENCY_NAMES
+        .map((name) => ({ name, at: row.indexOf(name) }))
+        .filter((hit) => hit.at >= 0)
+        .sort((a, b) => a.at - b.at)[0];
+      if (!agencyHit) {
+        ratingAbove = null; // e.g. an S&P/Moody's row
+        typeAbove = '';
+        continue;
+      }
+      const beforeAgency = row.slice(0, agencyHit.at);
+      if (SHORT_TERM_PATTERN.test(beforeAgency) || SHORT_TERM_GRADE_PATTERN.test(beforeAgency)) {
+        ratingAbove = null;
+        typeAbove = '';
+        continue;
+      }
+      const ratingMatch = RATING_TOKEN_PATTERN.exec(beforeAgency);
+      const rating: CreditRating | null = ratingMatch ? normalizeRatingToken(ratingMatch[1]) : ratingAbove;
+      if (!rating) continue;
+      ratingAbove = rating;
+      // 평가구분 is the column right after the agency (also often merged).
+      const afterAgency = row.slice(agencyHit.at + agencyHit.name.length, agencyHit.at + agencyHit.name.length + 20);
+      const evaluationType = EVALUATION_TYPE_PATTERN.exec(afterAgency)?.[0] ?? typeAbove;
+      typeAbove = evaluationType;
 
+      const agency = agencyHit.name;
       const year = date[1] ?? `20${date[2]}`;
       rows.push({
-        rating: normalizeRatingToken(ratingMatch[1]),
+        rating,
         agency: agency === '나이스신용평가' ? 'NICE신용평가' : agency === '한신평' ? '한국신용평가' : agency === '한기평' ? '한국기업평가' : agency,
         evaluatedAt: `${year}-${date[3].padStart(2, '0')}-${date[4].padStart(2, '0')}`,
-        evaluationType: EVALUATION_TYPE_PATTERN.exec(row)?.[0] ?? ''
+        evaluationType
       });
     }
   }

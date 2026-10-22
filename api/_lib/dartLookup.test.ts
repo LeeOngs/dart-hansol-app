@@ -127,3 +127,32 @@ describe('extractRatingFromAnnualReport', () => {
     expect(extractRatingFromAnnualReport(NO_RATING_MENTION_SNIPPET)).toBeNull();
   });
 });
+
+// Real tables where the rating cell is merged across rows, followed by the
+// rating-scale explanation ("… C 채무불이행의 위험성 …") and, for the holding
+// company, by its subsidiary's table.
+const HANIL_CEMENT_ANNUAL = `평가일 평가대상유가증권 등 평가대상 유가증권의신용등급 평가회사 평가구분
+2025.06.24 회사채 A+(안정적) 한국신용평가 정기평가 2025.06.25 NICE신용평가 정기평가
+2025.11.11 회사채 A+(안정적) 한국신용평가 수시평가 2025.11.12 NICE신용평가 수시평가
+※ 신용등급 체계 및 부여의미 유가증권 신용등급 부여의미 회사채 AAA 원리금 지급능력이 최상급임. CC 상위등급에 비하여 불안요소가 더욱 큼. C 채무불이행의 위험성이 높고`;
+
+const HANIL_HOLDINGS_ANNUAL = `평가일 평가대상유가증권 등 평가대상 유가증권의신용등급 평가회사 평가구분
+2021.06.11 회사채 A+(안정적) NICE신용평가 정기평가 2021.06.21 한국신용평가 2022.06.23 NICE신용평가 2022.06.30 한국신용평가
+주1) 2021년 정기평가에는 상호연대보증부 신용등급이 포함되어 있습니다.
+- 종속회사인 한일시멘트㈜의 최근 평정된 신용평가 내역은 다음과 같습니다.
+평가일 평가대상 유가증권 등 평가대상 유가증권의 신용등급 평가회사 평가구분
+2025.11.11 회사채 AA(안정적) 한국신용평가 수시평가`;
+
+describe('extractRatingFromAnnualReport — merged cells and subsidiaries', () => {
+  it('takes a merged row\'s rating from the row above, not from text after the table', () => {
+    expect(extractRatingFromAnnualReport(HANIL_CEMENT_ANNUAL)).toEqual({
+      rating: 'A+', agency: 'NICE신용평가', evaluatedAt: '2025-11-12', evaluationType: '수시평가'
+    });
+  });
+
+  it('stops before a subsidiary\'s table', () => {
+    expect(extractRatingFromAnnualReport(HANIL_HOLDINGS_ANNUAL)).toEqual({
+      rating: 'A+', agency: '한국신용평가', evaluatedAt: '2022-06-30', evaluationType: '정기평가'
+    });
+  });
+});
