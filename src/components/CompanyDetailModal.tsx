@@ -1,7 +1,7 @@
 import React from 'react';
 import type { CompanyAnalysisResult } from '../types';
 import { getRatingBadgeStyle } from '../utils/ratingLogic';
-import { describeRatingSource } from '../utils/ratingSource';
+import { describeRatingSource, formatRating } from '../utils/ratingSource';
 import { X, MapPin, Truck, CheckCircle2, XCircle, ShieldCheck, Phone, Info } from 'lucide-react';
 
 interface CompanyDetailModalProps {
@@ -77,7 +77,7 @@ export const CompanyDetailModal: React.FC<CompanyDetailModalProps> = ({ item, on
                 </span>
               </div>
               <span className={`px-4 py-1.5 font-black text-lg rounded-xl border ${ratingStyle.bg} ${ratingStyle.text} ${ratingStyle.border}`}>
-                {item.creditRating ?? '미확인'}
+                {formatRating(item)}
               </span>
             </div>
 

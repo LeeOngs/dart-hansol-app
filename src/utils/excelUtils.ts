@@ -1,6 +1,6 @@
 import * as XLSX from 'xlsx';
 import type { CompanyRawData, CompanyAnalysisResult } from '../types';
-import { describeRatingSource, ratingBasisDate } from './ratingSource';
+import { describeRatingSource, formatRating, ratingBasisDate } from './ratingSource';
 
 /**
  * Parse an Excel, CSV, or JSON File into raw company objects
@@ -65,7 +65,7 @@ export function exportResultsToExcel(results: CompanyAnalysisResult[], filename:
     '연번': idx + 1,
     '선정상태': r.ratingStatus === 'PASS' ? '합격 (B등급 이상)' : '불합격',
     '기업명': r.company.name,
-    'DART 신용등급': r.creditRating || '미확인',
+    'DART 신용등급': formatRating(r),
     '부채비율(%)': r.debtRatio ? `${r.debtRatio}%` : '-',
     '영업이익률(%)': r.operatingMargin ? `${r.operatingMargin}%` : '-',
     '최단 한솔 거점': r.nearestHub.name,

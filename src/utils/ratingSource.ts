@@ -1,4 +1,4 @@
-import type { RatingSource } from '../types';
+import type { CompanyAnalysisResult, RatingSource } from '../types';
 
 function formatYyyyMmDd(date: string): string {
   return date.length === 8 ? `${date.slice(0, 4)}.${date.slice(4, 6)}.${date.slice(6)}` : date;
@@ -18,4 +18,23 @@ export function describeRatingSource(source: RatingSource | undefined): string {
   const document = source.kind === 'ANNUAL_REPORT' ? '사업보고서' : '채무증권 신고서';
   const when = [ratingBasisDate(source), source.evaluationType].filter(Boolean).join(' ');
   return `${document} · ${when} · ${source.agency}`;
+}
+
+// A rating dated two or more calendar years back (in 2026: 2024 or earlier)
+// isn't a current rating. Mostly these come from old bond filings, used when
+// the annual report has no rating table; see the admin guide.
+const STALE_AFTER_YEARS = 2;
+
+/** The rating's year when it is old enough to flag, else null. */
+export function staleRatingYear(source: RatingSource | undefined, now = new Date()): number | null {
+  const year = Number(ratingBasisDate(source).slice(0, 4));
+  if (!year) return null;
+  return now.getFullYear() - year >= STALE_AFTER_YEARS ? year : null;
+}
+
+/** "A+", or "B(2010)" for an old rating; "미확인" when there is none. */
+export function formatRating(item: Pick<CompanyAnalysisResult, 'creditRating' | 'ratingSource'>, now = new Date()): string {
+  if (!item.creditRating) return '미확인';
+  const year = staleRatingYear(item.ratingSource, now);
+  return year ? `${item.creditRating}(${year})` : item.creditRating;
 }
