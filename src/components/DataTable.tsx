@@ -35,7 +35,7 @@ export const DataTable: React.FC<DataTableProps> = ({
           <thead>
             <tr className="bg-slate-950/80 border-b border-slate-800 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
               <th className="py-3.5 px-4 w-12 text-center">NO</th>
-              <th className="py-3.5 px-4">선정 상태</th>
+              <th className="py-3.5 px-4">충족 여부</th>
               <th className="py-3.5 px-4">기업명</th>
               <th className="py-3.5 px-4">DART 신용등급</th>
               <th className="py-3.5 px-4">전화번호 검증여부</th>
@@ -76,7 +76,7 @@ export const DataTable: React.FC<DataTableProps> = ({
                     {isPass ? (
                       <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
                         <CheckCircle2 className="w-3.5 h-3.5" />
-                        <span>선정 (합격)</span>
+                        <span>충족</span>
                       </span>
                     ) : (
                       <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-rose-500/10 text-rose-400 border border-rose-500/30">

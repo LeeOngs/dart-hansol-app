@@ -41,7 +41,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         <div className="flex items-center flex-wrap gap-2.5">
           {totalCount > 0 && (
             <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 bg-slate-800/80 border border-slate-700/60 rounded-lg text-xs">
-              <span className="text-slate-400">적격 업체 (B등급 이상):</span>
+              <span className="text-slate-400">충족 업체 (B등급 이상):</span>
               <span className="font-bold text-emerald-400 flex items-center gap-1">
                 <CheckCircle2 className="w-3.5 h-3.5" /> {passedCount} / {totalCount}개사
               </span>

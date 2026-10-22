@@ -60,10 +60,10 @@ function findHeaderKey(row: Record<string, any>, candidates: string[]): string |
   return undefined;
 }
 
-export function exportResultsToExcel(results: CompanyAnalysisResult[], filename: string = '한솔로지스틱스_거점별_선정기업_리스트.xlsx') {
+export function exportResultsToExcel(results: CompanyAnalysisResult[], filename: string = '한솔로지스틱스_거점별_충족기업_리스트.xlsx') {
   const exportData = results.map((r, idx) => ({
     '연번': idx + 1,
-    '선정상태': r.ratingStatus === 'PASS' ? '합격 (B등급 이상)' : '불합격',
+    '충족 여부': r.ratingStatus === 'PASS' ? '충족 (B등급 이상)' : '미충족',
     '기업명': r.company.name,
     'DART 신용등급': formatRating(r),
     '부채비율(%)': r.debtRatio ? `${r.debtRatio}%` : '-',
@@ -104,7 +104,7 @@ export function exportResultsToExcel(results: CompanyAnalysisResult[], filename:
   ];
 
   const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, '선정 기업 및 거점 정렬');
+  XLSX.utils.book_append_sheet(workbook, worksheet, '충족 기업 및 거점 정렬');
   XLSX.writeFile(workbook, filename);
 }
 

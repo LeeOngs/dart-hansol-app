@@ -49,11 +49,11 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ results 
           <CheckCircle2 className="w-6 h-6" />
         </div>
         <div>
-          <span className="text-xs font-semibold text-slate-400 block">적격 기업 (B등급 이상)</span>
+          <span className="text-xs font-semibold text-slate-400 block">충족 기업 (B등급 이상)</span>
           <div className="flex items-baseline gap-2 mt-0.5">
             <span className="text-2xl font-black text-emerald-400">{passedCount}</span>
             <span className="text-xs font-bold text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
-              {passRate}% 적격률
+              {passRate}% 충족률
             </span>
           </div>
         </div>

@@ -139,7 +139,7 @@ function readCompanies(file: string): CompanyRawData[] {
 }
 
 function describe(r: CompanyAnalysisResult): string {
-  if (r.dartSource === 'LIVE_DART') return `${r.creditRating} ${r.ratingStatus === 'PASS' ? '선정' : '미달'} (${describeRatingSource(r.ratingSource)})`;
+  if (r.dartSource === 'LIVE_DART') return `${r.creditRating} ${r.ratingStatus === 'PASS' ? '충족' : '미달'} (${describeRatingSource(r.ratingSource)})`;
   if (r.dartSource === 'ON_DART_NO_RATING') return 'DART 등록 · 등급 미확인';
   return 'DART 미등록';
 }
@@ -250,7 +250,7 @@ async function main() {
   saveCheckpoint();
   const results = Object.values(done);
   const counts = {
-    선정: results.filter((r) => r.ratingStatus === 'PASS').length,
+    충족: results.filter((r) => r.ratingStatus === 'PASS').length,
     등급미달: results.filter((r) => r.dartSource === 'LIVE_DART' && r.ratingStatus === 'FAIL').length,
     등급미확인: results.filter((r) => r.dartSource === 'ON_DART_NO_RATING').length,
     DART미등록: results.filter((r) => r.dartSource === 'NOT_ON_DART').length

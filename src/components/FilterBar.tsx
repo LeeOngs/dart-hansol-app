@@ -63,7 +63,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
             }`}
           >
             <CheckCircle2 className="w-3.5 h-3.5" />
-            <span>선정 합격: B등급 이상 ({passedCount})</span>
+            <span>충족: B등급 이상 ({passedCount})</span>
           </button>
 
           <button

@@ -340,7 +340,7 @@ export function App() {
   }, [analysisResults]);
 
   const handleExportExcel = () => {
-    exportResultsToExcel(filteredAndSortedResults, `한솔로지스틱스_거점별_선정기업_리스트_${selectedYear}년.xlsx`);
+    exportResultsToExcel(filteredAndSortedResults, `한솔로지스틱스_거점별_충족기업_리스트_${selectedYear}년.xlsx`);
   };
 
   return (

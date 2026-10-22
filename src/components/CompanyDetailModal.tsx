@@ -40,11 +40,11 @@ export const CompanyDetailModal: React.FC<CompanyDetailModalProps> = ({ item, on
               <h2 className="text-xl font-extrabold text-white">{item.company.name}</h2>
               {isPass ? (
                 <span className="inline-flex items-center gap-1 px-3 py-0.5 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
-                  <CheckCircle2 className="w-3.5 h-3.5" /> 선정 합격 (B등급 이상)
+                  <CheckCircle2 className="w-3.5 h-3.5" /> 충족 (B등급 이상)
                 </span>
               ) : (
                 <span className="inline-flex items-center gap-1 px-3 py-0.5 rounded-full text-xs font-bold bg-rose-500/10 text-rose-400 border border-rose-500/30">
-                  <XCircle className="w-3.5 h-3.5" /> 미선정 (B등급 미만)
+                  <XCircle className="w-3.5 h-3.5" /> 미충족 (B등급 미만)
                 </span>
               )}
             </div>
