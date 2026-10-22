@@ -2,10 +2,13 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { isValidAdminPassword } from '../_lib/adminAuth.js';
 import { checkFilingForRating } from '../_lib/dartLookup.js';
 
-// The slow step: DART throttles document.xml downloads to ~14KB/s from cloud
-// IPs (~30-40s for a typical filing). Exactly one filing per call keeps each
-// invocation inside the 60s Hobby-plan ceiling; the client loops over filings.
-export const config = { maxDuration: 60 };
+// The slow step if DART throttles us (it does for overseas IPs). One
+// filing per call keeps each invocation inside the Hobby plan's 300s limit
+// (with Fluid compute); the client loops over filings.
+export const config = { maxDuration: 300 };
+
+// Leaves room under maxDuration for unzip/decode/response after the download.
+const DOWNLOAD_TIMEOUT_MS = 280000;
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
@@ -30,7 +33,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const found = await checkFilingForRating(rceptNo, apiKey);
+    const found = await checkFilingForRating(rceptNo, apiKey, DOWNLOAD_TIMEOUT_MS);
     res.status(200).json({ found });
   } catch (err) {
     // A filing too large to download within the time budget is skipped, not

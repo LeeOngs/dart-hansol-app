@@ -1,6 +1,6 @@
 // Regenerates api/_lib/corpCodeIndex.json from DART's corpCode.xml.
 //
-// DART throttles this bulk download hard (~14KB/s) from cloud/datacenter IPs
+// DART throttles this bulk download hard (~14KB/s) from overseas IPs
 // (confirmed empirically against a Vercel deployment — a 3.6MB file took
 // 4+ minutes, impossible within any serverless function timeout). It is NOT
 // throttled this way from an ordinary residential/office connection, so this

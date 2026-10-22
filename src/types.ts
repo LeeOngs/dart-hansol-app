@@ -42,9 +42,14 @@ export interface HubDistance {
 }
 
 export interface RatingSource {
+  // Where the rating was read. Older saved data has no `kind` — those all
+  // came from bond filings.
+  kind?: 'ANNUAL_REPORT' | 'BOND_FILING';
   agency: string;
   rceptNo: string;
-  reportDate: string;
+  reportDate: string; // filing date, YYYYMMDD
+  evaluatedAt?: string; // rating date, YYYY-MM-DD (annual-report ratings)
+  evaluationType?: string; // 본평가 / 정기평가 / 수시평가
 }
 
 export interface CompanyAnalysisResult {

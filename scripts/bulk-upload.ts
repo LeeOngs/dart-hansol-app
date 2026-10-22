@@ -1,7 +1,7 @@
 /**
  * Bulk-registers a large company list (thousands of rows) into the shared
  * company list — for the initial load, which is too big to drive from a
- * browser tab against Vercel (DART throttles cloud IPs to ~14KB/s; from a
+ * browser tab (and DART throttles overseas IPs to ~14KB/s; from a
  * local PC it doesn't).
  *
  * Needs only DART_API_KEY and the shared ADMIN_PASSWORD in .env.local
@@ -22,6 +22,7 @@ import path from 'node:path';
 import * as XLSX from 'xlsx';
 import type { CompanyAnalysisResult, CompanyRawData } from '../src/types.js';
 import { normalizeRawDataList } from '../src/utils/excelUtils.js';
+import { describeRatingSource } from '../src/utils/ratingSource.js';
 import { analyzeCompany, runPool } from '../src/services/companyAnalysis.js';
 import type { DartBackend } from '../src/services/companyAnalysis.js';
 import { companyKey, dedupeCompanies, isValidDatasetYear } from '../src/services/companyStore.js';
@@ -29,6 +30,7 @@ import {
   findDartCorp,
   listBondFilings,
   checkFilingForRating,
+  checkAnnualReportRating,
   DartApiError,
   DART_DAILY_LIMIT_STATUS
 } from '../api/_lib/dartLookup.js';
@@ -137,7 +139,7 @@ function readCompanies(file: string): CompanyRawData[] {
 }
 
 function describe(r: CompanyAnalysisResult): string {
-  if (r.dartSource === 'LIVE_DART') return `${r.creditRating} (${r.ratingSource?.agency}) ${r.ratingStatus === 'PASS' ? '선정' : '미달'}`;
+  if (r.dartSource === 'LIVE_DART') return `${r.creditRating} ${r.ratingStatus === 'PASS' ? '선정' : '미달'} (${describeRatingSource(r.ratingSource)})`;
   if (r.dartSource === 'ON_DART_NO_RATING') return 'DART 등록 · 등급 미확인';
   return 'DART 미등록';
 }
@@ -197,6 +199,7 @@ async function main() {
 
   const backend: DartBackend = {
     findCorp: (name, bizNo) => findDartCorp(name, bizNo, apiKey),
+    annualReportRating: (corpCode) => checkAnnualReportRating(corpCode, apiKey),
     listBondFilings: (corpCode) => listBondFilings(corpCode, apiKey),
     checkFiling: (rceptNo) => checkFilingForRating(rceptNo, apiKey)
   };

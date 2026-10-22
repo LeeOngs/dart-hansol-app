@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { extractCreditRatingFromText } from './dartLookup';
+import { extractCreditRatingFromText, extractRatingFromAnnualReport } from './dartLookup';
 
 // Fixtures below are trimmed snippets from a real DART 증권신고서(채무증권)
 // filing (Hyundai Motor, rcept_no 20210128000530), captured via document.xml
@@ -76,5 +76,54 @@ describe('extractCreditRatingFromText', () => {
 
     const soloBBB0 = `<TU>신용평가기관</TU><TU>등급</TU><TU>한국기업평가</TU><TU>회사채 (BBB0)</TU>`;
     expect(extractCreditRatingFromText(soloBBB0)?.rating).toBe('BBB');
+  });
+});
+
+// Trimmed from real 사업보고서 (2025.12) credit-rating tables.
+const HYUNDAI_MOTOR_ANNUAL = `
+<TU>평가일</TU><TU>평가대상유가증권 등</TU><TU>신용등급</TU><TU>평가회사</TU><TU>평가구분</TU>
+<TU>2025-01-22</TU><TU>기업신용등급(ICR)</TU><TU>A-(Stable)</TU><TU>S&amp;P(미국)</TU><TU>수시평가</TU>
+<TU>2025-11-03</TU><TU>A-(Stable)</TU><TU>Fitch(미국)</TU><TU>수시평가</TU>
+<TU>2024-04-01</TU><TU>회사채</TU><TU>AAA(안정적)</TU><TU>NICE신용평가</TU><TU>정기평가</TU>
+<TU>2024-04-19</TU><TU>AA+(긍정적)</TU><TU>한국기업평가</TU><TU>정기평가</TU>
+<TU>2024-10-31</TU><TU>AAA(안정적)</TU><TU>한국기업평가</TU><TU>수시평가</TU>
+`;
+
+const HYUNDAI_ELEVATOR_ANNUAL = `
+<TU>평가일</TU><TU>평가대상</TU><TU>등급</TU><TU>평가회사</TU><TU>평가 구분</TU>
+<TU>2025.06.30</TU><TU>회사채</TU><TU>A0</TU><TU>NICE신용평가(AAA~D)</TU><TU>정기평가</TU>
+<TU>2025.06.23</TU><TU>회사채</TU><TU>A+</TU><TU>한국기업평가(AAA~D)</TU><TU>정기평가</TU>
+`;
+
+// Only CP (short-term A1 scale), followed by a subsidiary's section that
+// must not be read as the company's own.
+const OTTOGI_ANNUAL = `
+<TU>평가일</TU><TU>평가대상유가증권</TU><TU>신용등급</TU><TU>평가회사(신용평가 등급범위)</TU><TU>비고</TU>
+<TU>'25.11.12</TU><TU>기업어음</TU><TU>A1</TU><TU>한국기업평가(A1 ~ D)</TU><TU>정기평가</TU>
+<TU>'25.11.12</TU><TU>기업어음</TU><TU>A1</TU><TU>NICE신용평가(A1 ~ D)</TU><TU>정기평가</TU>
+<P>□ 오뚜기냉동식품(주)</P>
+<TU>평가일</TU><TU>평가대상</TU><TU>신용등급</TU><TU>평가회사</TU>
+<TU>2025.05.01</TU><TU>회사채</TU><TU>BBB</TU><TU>한국기업평가</TU>
+`;
+
+describe('extractRatingFromAnnualReport', () => {
+  it('ignores global ratings and takes the latest domestic one', () => {
+    expect(extractRatingFromAnnualReport(HYUNDAI_MOTOR_ANNUAL)).toEqual({
+      rating: 'AAA', agency: '한국기업평가', evaluatedAt: '2024-10-31', evaluationType: '수시평가'
+    });
+  });
+
+  it('reads the "X0" notation and does not mistake the "(AAA~D)" scale note for a rating', () => {
+    expect(extractRatingFromAnnualReport(HYUNDAI_ELEVATOR_ANNUAL)).toEqual({
+      rating: 'A', agency: 'NICE신용평가', evaluatedAt: '2025-06-30', evaluationType: '정기평가'
+    });
+  });
+
+  it('returns null for CP-only tables and never reads a subsidiary section', () => {
+    expect(extractRatingFromAnnualReport(OTTOGI_ANNUAL)).toBeNull();
+  });
+
+  it('returns null when there is no rating table', () => {
+    expect(extractRatingFromAnnualReport(NO_RATING_MENTION_SNIPPET)).toBeNull();
   });
 });

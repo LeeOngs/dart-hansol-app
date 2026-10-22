@@ -1,4 +1,4 @@
-import type { CompanyRawData, CompanyAnalysisResult, CreditRating } from '../types.js';
+import type { CompanyRawData, CompanyAnalysisResult, CreditRating, RatingSource } from '../types.js';
 import { geocodeAddress } from '../utils/geocoding.js';
 import { getNearestHubInfo } from '../utils/distance.js';
 import { getRatingRank, getRatingScore } from '../utils/ratingLogic.js';
@@ -22,22 +22,33 @@ export interface BondRatingFound {
   agency: string;
 }
 
+export interface AnnualRatingFound extends BondRatingFound {
+  evaluatedAt: string; // YYYY-MM-DD
+  evaluationType: string;
+  report: { rceptNo: string; reportDate: string };
+}
+
 /**
- * The three DART lookups an analysis needs. The browser implements these as
- * calls to the admin-gated /api/dart/* functions; the local bulk script calls
- * DART directly. Implementations must throw on failure — returning null/[] on
- * an error would be recorded as a false "not on DART" / "no rating".
+ * The DART lookups an analysis needs. The browser implements these as calls
+ * to the admin-gated /api/dart/* functions; the local bulk script calls DART
+ * directly. Implementations must throw on failure — returning null/[] on an
+ * error would be recorded as a false "not on DART" / "no rating". The one
+ * exception: `annualReportRating` may return null when the report couldn't be
+ * downloaded in time, because the bond filings are then checked instead.
  */
 export interface DartBackend {
   findCorp(name: string, bizNo: string): Promise<DartCorpMatch | null>;
+  annualReportRating(corpCode: string): Promise<AnnualRatingFound | null>;
   listBondFilings(corpCode: string): Promise<BondFiling[]>;
   checkFiling(rceptNo: string): Promise<BondRatingFound | null>;
 }
 
 /**
- * Analyzes one company: exact bizr_no match on DART, then the rating stated in
- * its most recent 채무증권 증권신고서 filings. Never guesses — a company that
- * can't be confirmed is recorded as NOT_ON_DART or ON_DART_NO_RATING.
+ * Analyzes one company: exact bizr_no match on DART, then its credit rating —
+ * first from the latest 사업보고서's rating table (which includes yearly
+ * surveillance ratings, so it's current), else from its most recent
+ * 채무증권 증권신고서 filings. Never guesses — a company that can't be
+ * confirmed is recorded as NOT_ON_DART or ON_DART_NO_RATING.
  */
 export async function analyzeCompany(
   company: CompanyRawData,
@@ -80,6 +91,30 @@ export async function analyzeCompany(
     phone: dartCorp.phoneNo || updatedCompany.phone
   };
 
+  const rated = (rating: CreditRating, ratingSource: RatingSource): CompanyAnalysisResult => ({
+    ...base,
+    company: confirmedCompany,
+    creditRating: rating,
+    ratingScore: getRatingScore(rating),
+    ratingStatus: getRatingRank(rating) <= getRatingRank('B-') ? 'PASS' : 'FAIL',
+    dartSource: 'LIVE_DART',
+    ratingSource,
+    phoneVerified
+  });
+
+  report('사업보고서 신용등급 확인 중');
+  const annual = await backend.annualReportRating(dartCorp.corpCode);
+  if (annual) {
+    return rated(annual.rating, {
+      kind: 'ANNUAL_REPORT',
+      agency: annual.agency,
+      rceptNo: annual.report.rceptNo,
+      reportDate: annual.report.reportDate,
+      evaluatedAt: annual.evaluatedAt,
+      evaluationType: annual.evaluationType
+    });
+  }
+
   report('채무증권 신고서 목록 조회 중');
   const filings = await backend.listBondFilings(dartCorp.corpCode);
 
@@ -88,16 +123,7 @@ export async function analyzeCompany(
     report(`신용등급 확인 중 (공시 ${i + 1}/${filings.length})`);
     const found = await backend.checkFiling(filing.rceptNo);
     if (found) {
-      return {
-        ...base,
-        company: confirmedCompany,
-        creditRating: found.rating,
-        ratingScore: getRatingScore(found.rating),
-        ratingStatus: getRatingRank(found.rating) <= getRatingRank('B-') ? 'PASS' : 'FAIL',
-        dartSource: 'LIVE_DART',
-        ratingSource: { agency: found.agency, rceptNo: filing.rceptNo, reportDate: filing.reportDate },
-        phoneVerified
-      };
+      return rated(found.rating, { kind: 'BOND_FILING', agency: found.agency, rceptNo: filing.rceptNo, reportDate: filing.reportDate });
     }
   }
 

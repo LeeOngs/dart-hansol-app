@@ -1,6 +1,6 @@
 import type { CompanyRawData, CompanyAnalysisResult } from '../types';
 import { analyzeCompany, runPool } from './companyAnalysis';
-import type { DartBackend, DartCorpMatch, BondFiling, BondRatingFound } from './companyAnalysis';
+import type { DartBackend, DartCorpMatch, BondFiling, BondRatingFound, AnnualRatingFound } from './companyAnalysis';
 
 export interface AnalysisProgress {
   doneCount: number;
@@ -18,8 +18,8 @@ type HttpError = Error & { status?: number };
 
 // Each lookup step is its own small server call (corp match → filing list →
 // one filing per call) rather than one long request: DART throttles document
-// downloads from cloud IPs to ~14KB/s, so a single filing check can take
-// 30-40s — several inside one request would blow Vercel's 60s limit.
+// downloads from overseas IPs to ~14KB/s, so a single filing check can take
+// tens of seconds — several inside one request would exceed Vercel's limit.
 const CONCURRENCY = 3;
 
 async function postJsonOnce<T>(url: string, body: unknown): Promise<T> {
@@ -57,6 +57,8 @@ function httpBackend(adminPassword: string): DartBackend {
   return {
     findCorp: async (name, bizNo) =>
       (await postJson<{ dartCorp: DartCorpMatch | null }>('/api/dart/find-corp', { adminPassword, name, bizNo })).dartCorp,
+    annualReportRating: async (corpCode) =>
+      (await postJson<{ found: AnnualRatingFound | null }>('/api/dart/annual-rating', { adminPassword, corpCode })).found,
     listBondFilings: async (corpCode) =>
       (await postJson<{ filings: BondFiling[] }>('/api/dart/list-bond-filings', { adminPassword, corpCode })).filings,
     checkFiling: async (rceptNo) =>

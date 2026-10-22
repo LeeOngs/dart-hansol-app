@@ -69,13 +69,12 @@ function normalizeCompanyName(name: string): string {
   return name.replace(NAME_NOISE_PATTERN, '');
 }
 
-// DART throttles its bulk corpCode.xml download to ~14KB/s from cloud/
-// datacenter IPs (confirmed empirically — a 3.6MB file took 4+ minutes from
-// Vercel, impossible within any serverless timeout), while ordinary JSON API
-// calls (company.json, list.json) are fast and unthrottled. The company list
-// barely changes day-to-day, so it's pre-fetched locally (unthrottled) by
-// scripts/refresh-corp-code-index.mjs and bundled here instead of fetched at
-// request time. Re-run that script + redeploy occasionally to pick up newly
+// DART throttles downloads to ~14KB/s from overseas IPs (confirmed: a 3.6MB
+// corpCode.xml took 4+ minutes from Vercel's US region). The functions now
+// run in Seoul (vercel.json), where downloads are fast, but the company list
+// barely changes day-to-day, so it stays pre-fetched by
+// scripts/refresh-corp-code-index.mjs and bundled here instead of fetched on
+// every request. Re-run that script + redeploy occasionally to pick up newly
 // registered companies.
 const corpCodeIndex = corpCodeIndexData as CorpCodeEntry[];
 
@@ -100,7 +99,7 @@ function assertDartOk(data: { status?: string; message?: string }): void {
   }
 }
 
-// Same 60s-per-invocation reasoning as above — cap every individual DART
+// Cap every individual DART request (serverless functions have a time limit)
 // request so a stuck one fails fast and the caller can move on.
 async function fetchWithTimeout(url: string, timeoutMs: number): Promise<Response> {
   const controller = new AbortController();
@@ -202,7 +201,7 @@ export function extractCreditRatingFromText(rawText: string): BondRatingFound | 
 }
 
 // Each candidate filing can mean downloading and decoding a multi-hundred-KB
-// document, also throttled to ~14KB/s from cloud IPs (confirmed: a 490KB
+// document (from overseas IPs throttled to ~14KB/s — confirmed: a 490KB
 // filing took 37s from Vercel) — capped to the most recent few so a single
 // company can't require an unbounded number of these slow fetches. This is
 // also more correct: a rating from a 2011 filing is stale and shouldn't be
@@ -243,9 +242,18 @@ export async function listBondFilings(corpCode: string, apiKey: string): Promise
  * work per (serverless-function-timeout-bounded) call instead of looping
  * through several filings within a single invocation.
  */
-export async function checkFilingForRating(rceptNo: string, apiKey: string): Promise<BondRatingFound | null> {
-  // Leaves ~8s of the 60s budget for unzip/decode/response after the download.
-  const response = await fetchWithTimeout(`${DART_PROXY_BASE}/document.xml?crtfc_key=${apiKey}&rcept_no=${rceptNo}`, 52000);
+export async function checkFilingForRating(rceptNo: string, apiKey: string, timeoutMs = 52000): Promise<BondRatingFound | null> {
+  const text = await downloadFilingText(rceptNo, apiKey, timeoutMs);
+  return text === null ? null : extractCreditRatingFromText(text);
+}
+
+/**
+ * Downloads a filing's main document as text, or null when DART has no
+ * document for it (status 014 — e.g. "[첨부정정]" filings, which only amend
+ * attachments; that says nothing about the rating, so callers move on).
+ */
+async function downloadFilingText(rceptNo: string, apiKey: string, timeoutMs: number): Promise<string | null> {
+  const response = await fetchWithTimeout(`${DART_PROXY_BASE}/document.xml?crtfc_key=${apiKey}&rcept_no=${rceptNo}`, timeoutMs);
   if (!response.ok) throw new Error(`document.xml HTTP ${response.status}`);
   const buffer = new Uint8Array(await response.arrayBuffer());
 
@@ -257,27 +265,157 @@ export async function checkFilingForRating(rceptNo: string, apiKey: string): Pro
   } catch {
     const body = new TextDecoder('utf-8').decode(buffer);
     const status = /<status>(\d+)<\/status>/.exec(body)?.[1] ?? 'unknown';
-    // 014 = no document for this filing — e.g. "[첨부정정]" filings, which
-    // only amend attachments. It says nothing about the rating, so the
-    // caller just moves on to the next filing.
     if (status === NO_DOCUMENT_STATUS) return null;
     const message = /<message>([^<]*)<\/message>/.exec(body)?.[1] ?? body.slice(0, 200);
     throw new DartApiError(status, message);
   }
-  const bytes = files[Object.keys(files)[0]];
+  // The main document is "<rceptNo>.xml"; the rest are attachments (e.g. the
+  // audit report), which don't carry the rating table.
+  const bytes = files[`${rceptNo}.xml`] ?? files[Object.keys(files)[0]];
 
   // Older DART filings declare utf-8 in their header but the bytes are
   // actually EUC-KR; newer filings (~2023+) are genuinely UTF-8 as declared.
   // Detect by trying a strict UTF-8 decode first — EUC-KR byte sequences
   // almost always fail it — falling back to EUC-KR only when that throws.
-  let text: string;
   try {
-    text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
   } catch {
-    text = new TextDecoder('euc-kr').decode(bytes);
+    return new TextDecoder('euc-kr').decode(bytes);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Annual business report (사업보고서) ratings — the primary source.
+//
+// A bond filing only states the rating at the time bonds were issued, so a
+// company that hasn't issued in years shows a years-old rating. The annual
+// report's credit-rating table also lists the yearly surveillance ratings
+// (정기평가), with the date and agency of each — so it's both fresher and
+// explicit about when the rating is from.
+// ---------------------------------------------------------------------------
+
+export interface AnnualReport {
+  rceptNo: string;
+  reportName: string;
+  reportDate: string;
+}
+
+export interface AnnualReportRating {
+  rating: CreditRating;
+  agency: string;
+  evaluatedAt: string; // YYYY-MM-DD
+  evaluationType: string; // 본평가 / 정기평가 / 수시평가, or '' when not stated
+}
+
+/** The most recent 사업보고서 filed in the last 3 years, or null if none. */
+export async function findLatestAnnualReport(corpCode: string, apiKey: string): Promise<AnnualReport | null> {
+  const today = todayYyyyMmDd();
+  const threeYearsAgo = `${Number(today.slice(0, 4)) - 3}${today.slice(4)}`;
+  const url = `${DART_PROXY_BASE}/list.json?crtfc_key=${apiKey}&corp_code=${corpCode}&pblntf_ty=A&pblntf_detail_ty=A001&bgn_de=${threeYearsAgo}&end_de=${today}&page_count=20`;
+  const response = await fetchWithTimeout(url, 10000);
+  if (!response.ok) throw new Error(`list.json HTTP ${response.status}`);
+  const data = await response.json() as { status: string; message?: string; list?: { report_nm: string; rcept_no: string; rcept_dt: string }[] };
+  if (data.status === '013') return null;
+  assertDartOk(data);
+
+  const report = (data.list ?? [])
+    .filter((item) => item.report_nm.includes('사업보고서') && !item.report_nm.includes('첨부'))
+    .sort((a, b) => b.rcept_dt.localeCompare(a.rcept_dt))[0];
+  return report ? { rceptNo: report.rcept_no, reportName: report.report_nm, reportDate: report.rcept_dt } : null;
+}
+
+// "2025.06.30", "2025-06-30", "2025년 06월 30일", or "'25.06.30".
+const DATE_PATTERN = /(?:(\d{4})|['’](\d{2}))\s*[.\-년]\s*(\d{1,2})\s*[.\-월]\s*(\d{1,2})\s*일?/g;
+// Short-term instruments use a separate A1~D scale that can't be compared
+// against the B- cutoff, so their rows are ignored.
+const SHORT_TERM_PATTERN = /기업어음|단기사채|전자단기|CP|ABSTB/;
+// Only Korean agencies' ratings count: the same table often lists global
+// ratings (S&P/Moody's/Fitch), which are on a different, stricter scale.
+const DOMESTIC_AGENCY_NAMES = ['한국신용평가', 'NICE신용평가', '나이스신용평가', '한국기업평가', '서울신용평가', '한신평', '한기평'];
+// A business report also describes each consolidated subsidiary ("□ 자회사명")
+// after the company's own overview; stop before those so a subsidiary's
+// rating is never read as the company's.
+const SUBSIDIARY_SECTION_MARKERS = ['□', '회사의 연혁'];
+const EVALUATION_TYPE_PATTERN = /본평가|정기평가|수시평가|예비평가/;
+// Scale notes like "(AAA ~ D, 10등급)" contain rating-looking tokens.
+const SCALE_NOTE_PATTERN = /\(\s*(?:AAA|A1)\s*~\s*D[^)]*\)/g;
+const MAX_ROW_LENGTH = 300;
+
+/**
+ * Reads the annual report's credit-rating table (평가일 | 평가대상 | 등급 |
+ * 평가회사 | 평가구분) and returns its most recent long-term rating.
+ */
+export function extractRatingFromAnnualReport(rawText: string): AnnualReportRating | null {
+  const text = stripXmlTags(rawText).replace(SCALE_NOTE_PATTERN, ' ');
+  const rows: AnnualReportRating[] = [];
+
+  // A table header: "평가일" followed closely by an agency column label.
+  const headerPattern = /평가\s*일[^가-힣]{0,5}[\s\S]{0,200}?(평가\s*회사|신용평가\s*기관|평가\s*기관)/g;
+  const headers = [...text.matchAll(headerPattern)];
+  if (headers.length === 0) return null;
+
+  // The company's own tables run from the first header up to the first
+  // subsidiary section (several tables may sit there, e.g. bonds and CP apart).
+  const firstHeaderEnd = (headers[0].index ?? 0) + headers[0][0].length;
+  const ownSectionEnd = Math.min(
+    ...SUBSIDIARY_SECTION_MARKERS.map((m) => text.indexOf(m, firstHeaderEnd)).filter((i) => i >= 0),
+    firstHeaderEnd + 30000
+  );
+
+  for (const header of headers) {
+    const start = (header.index ?? 0) + header[0].length;
+    if (start > ownSectionEnd) break;
+    const dates = [...text.slice(start, ownSectionEnd).matchAll(DATE_PATTERN)];
+    let previousEnd = 0;
+    for (let i = 0; i < dates.length; i++) {
+      const date = dates[i];
+      const dateStart = date.index ?? 0;
+      // Rows sit back to back; a long gap means the table has ended.
+      if (dateStart - previousEnd > MAX_ROW_LENGTH) break;
+      const rowEnd = Math.min(dates[i + 1]?.index ?? dateStart + MAX_ROW_LENGTH, dateStart + MAX_ROW_LENGTH);
+      const row = text.slice(start + dateStart + date[0].length, start + rowEnd);
+      previousEnd = rowEnd;
+
+      const ratingMatch = RATING_TOKEN_PATTERN.exec(row);
+      if (!ratingMatch) continue;
+      if (SHORT_TERM_PATTERN.test(row.slice(0, ratingMatch.index))) continue;
+      const compactRow = row.replace(/\s+/g, '');
+      const agency = DOMESTIC_AGENCY_NAMES.find((a) => compactRow.includes(a));
+      if (!agency) continue;
+
+      const year = date[1] ?? `20${date[2]}`;
+      rows.push({
+        rating: normalizeRatingToken(ratingMatch[1]),
+        agency: agency === '나이스신용평가' ? 'NICE신용평가' : agency === '한신평' ? '한국신용평가' : agency === '한기평' ? '한국기업평가' : agency,
+        evaluatedAt: `${year}-${date[3].padStart(2, '0')}-${date[4].padStart(2, '0')}`,
+        evaluationType: EVALUATION_TYPE_PATTERN.exec(row)?.[0] ?? ''
+      });
+    }
   }
 
-  return extractCreditRatingFromText(text);
+  // Most recent first; on the same date, the lower (more conservative) rating.
+  rows.sort((a, b) =>
+    b.evaluatedAt.localeCompare(a.evaluatedAt) ||
+    CREDIT_RATINGS_ORDER.indexOf(b.rating) - CREDIT_RATINGS_ORDER.indexOf(a.rating)
+  );
+  return rows[0] ?? null;
+}
+
+/**
+ * Finds the latest annual report and reads its rating table. Annual reports
+ * are large; if DART throttles the download it can exceed `timeoutMs`, which throws
+ * an AbortError — callers then fall back to bond filings.
+ */
+export async function checkAnnualReportRating(
+  corpCode: string,
+  apiKey: string,
+  timeoutMs = 52000
+): Promise<(AnnualReportRating & { report: AnnualReport }) | null> {
+  const report = await findLatestAnnualReport(corpCode, apiKey);
+  if (!report) return null;
+  const text = await downloadFilingText(report.rceptNo, apiKey, timeoutMs);
+  const found = text === null ? null : extractRatingFromAnnualReport(text);
+  return found ? { ...found, report } : null;
 }
 
 function todayYyyyMmDd(): string {

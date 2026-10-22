@@ -1,6 +1,7 @@
 import React from 'react';
 import type { CompanyAnalysisResult } from '../types';
 import { getRatingBadgeStyle } from '../utils/ratingLogic';
+import { describeRatingSource } from '../utils/ratingSource';
 import { X, MapPin, Truck, CheckCircle2, XCircle, ShieldCheck, Phone, Info } from 'lucide-react';
 
 interface CompanyDetailModalProps {
@@ -16,9 +17,9 @@ export const CompanyDetailModal: React.FC<CompanyDetailModalProps> = ({ item, on
     ? getRatingBadgeStyle(item.creditRating)
     : { bg: 'bg-slate-700/20', text: 'text-slate-400', border: 'border-slate-600/40' };
   const dartStatusLabel =
-    item.dartSource === 'LIVE_DART' ? `DART 채무증권 신고서 확인 (${item.ratingSource?.agency ?? ''})` :
+    item.dartSource === 'LIVE_DART' ? `DART ${describeRatingSource(item.ratingSource)}` :
     item.dartSource === 'NOT_ON_DART' ? 'DART 미등록 (사업자번호 불일치)' :
-    'DART 등록됨 · 채무증권 신고서에서 등급 미확인';
+    'DART 등록됨 · 사업보고서·채무증권 신고서에서 등급 미확인';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fade-in">

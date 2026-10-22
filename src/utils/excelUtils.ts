@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx';
 import type { CompanyRawData, CompanyAnalysisResult } from '../types';
+import { describeRatingSource, ratingBasisDate } from './ratingSource';
 
 /**
  * Parse an Excel, CSV, or JSON File into raw company objects
@@ -76,9 +77,10 @@ export function exportResultsToExcel(results: CompanyAnalysisResult[], filename:
     '대표전화': r.company.phone || '-',
     '업종': r.company.industry || '-',
     '공시출처':
-      r.dartSource === 'LIVE_DART' ? 'DART 채무증권 신고서 확인' :
+      r.dartSource === 'LIVE_DART' ? `DART ${describeRatingSource(r.ratingSource)}` :
       r.dartSource === 'NOT_ON_DART' ? 'DART 미등록' :
-      'DART 등록 · 등급 미확인'
+      'DART 등록 · 등급 미확인',
+    '등급 기준일': ratingBasisDate(r.ratingSource) || '-'
   }));
 
   const worksheet = XLSX.utils.json_to_sheet(exportData);

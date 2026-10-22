@@ -1,6 +1,7 @@
 import React from 'react';
 import type { CompanyAnalysisResult } from '../types';
 import { getRatingBadgeStyle } from '../utils/ratingLogic';
+import { describeRatingSource, ratingBasisDate } from '../utils/ratingSource';
 import { CheckCircle2, XCircle, MapPin, Trash2, Info, Building, Truck, Clock, ShieldCheck, ShieldQuestion } from 'lucide-react';
 
 interface DataTableProps {
@@ -107,6 +108,11 @@ export const DataTable: React.FC<DataTableProps> = ({
                     >
                       {item.creditRating ?? '미확인'}
                     </span>
+                    {item.ratingSource && (
+                      <span className="block text-[10px] text-slate-500 mt-1" title={describeRatingSource(item.ratingSource)}>
+                        {ratingBasisDate(item.ratingSource)} 기준
+                      </span>
+                    )}
                   </td>
 
                   <td className="py-3.5 px-4 whitespace-nowrap">
